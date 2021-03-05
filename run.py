@@ -1,6 +1,7 @@
 import lib  # add lib folder to sys.path
 import os
 import sys
+import logging
 import time
 import argparse
 import torch
@@ -10,6 +11,10 @@ from script.train import train
 from script.test import test
 from script.detect import detect
 from utils.net_utils import parse_additional_params
+
+lib_path = os.path.join(os.path.dirname("lib/"))
+if lib_path not in sys.path:
+    sys.path.insert(0, lib_path)
 
 
 def add_common_parser_arguments(parser):
@@ -131,6 +136,29 @@ if __name__ == "__main__":
             print('\t' + p)
         exit()
 
+    log = logging.getLogger('All_Logs')
+    log.setLevel(logging.INFO)
+    if args.mode == 'train':
+        log_filename = os.path.join(cfg.DATA_DIR, "logs", "wsd_train_sess_{}.log".format(args.session))
+        if args.epoch == 1:
+            fh = logging.FileHandler(log_filename, mode='w')
+        else:
+            fh = logging.FileHandler(log_filename, mode='a')
+    else:
+        log_filename = os.path.join(cfg.DATA_DIR, "logs", "wsd_test_sess_{}.log".format(args.session))
+        if args.epoch==1:
+            fh = logging.FileHandler(log_filename, mode='w')
+        else:
+            fh = logging.FileHandler(log_filename, mode='a')
+    fh.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+    log.addHandler(fh)
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(formatter)
+    log.addHandler(ch)
+
     if args.mode == 'train':
         train(dataset=args.dataset, net=args.net, batch_size=args.batch_size,
               learning_rate=args.learning_rate, optimizer=args.optimizer,
@@ -141,7 +169,7 @@ if __name__ == "__main__":
               vis_off=args.vis_off, mGPU=args.mGPU, add_params=add_params)
     elif args.mode == 'test':
         test(dataset=args.dataset, net=args.net, class_agnostic=args.class_agnostic,
-             load_dir=args.load_dir, session=args.session, epoch=args.epoch,
+             load_dir=args.load_dir, session=args.session, epoch=args.epoch, log=log,
              add_params=add_params)
     else:
         detect(dataset=args.dataset, net=args.net, class_agnostic=args.class_agnostic,

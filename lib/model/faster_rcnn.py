@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from config import cfg
 from model.rpn.rpn import _RPN
-from model.roi.roi_pool import ROIPool
-from model.roi.roi_align import ROIAlign
+from torchvision.ops import RoIPool
+from torchvision.ops import RoIAlign
 from model.rpn.proposal_target_layer import _ProposalTargetLayer
 from utils.net_utils import smooth_l1_loss
 from utils.bbox_transform import bbox_transform_inv, clip_boxes
@@ -21,9 +21,9 @@ class FasterRCNN(nn.Module):
         self.RCNN_proposal_target = _ProposalTargetLayer(self.regression_weights)
         
         if cfg.GENERAL.POOLING_MODE == 'pool':
-            self.RCNN_roi_layer = ROIPool(1.0/16.0, cfg.GENERAL.POOLING_SIZE)
+            self.RCNN_roi_layer = RoIPool(cfg.GENERAL.POOLING_SIZE, 1.0/16.0)
         elif cfg.GENERAL.POOLING_MODE == 'align':
-            self.RCNN_roi_layer = ROIAlign(1.0/16.0, cfg.GENERAL.POOLING_SIZE, 0, True)
+            self.RCNN_roi_layer = RoIAlign(cfg.GENERAL.POOLING_SIZE, 1.0/16.0, 0)
         else:
             raise ValueError('There is no implementation for "{}" ROI layer'
                              .format(cfg.GENERAL.POOLING_MODE))

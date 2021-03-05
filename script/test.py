@@ -3,6 +3,7 @@ import sys
 import time
 import pprint
 import pickle
+import shutil
 import torch
 import numpy as np
 import dataset.dataset_factory as dataset_factory
@@ -12,22 +13,23 @@ from torch.utils.data import DataLoader
 from dataset.collate import collate_test
 from model.vgg16 import VGG16
 from model.resnet import Resnet
-from _C import nms
+from torchvision.ops import nms
 
-def test(dataset, net, class_agnostic, load_dir, session, epoch, add_params):
+def test(dataset, net, class_agnostic, load_dir, session, epoch, log, add_params):
+    log.info("============== Testing EPOCH {} =============".format(epoch))
     device = torch.device('cuda:0') if cfg.CUDA else torch.device('cpu')
-    print(Back.CYAN + Fore.BLACK + 'Current device: %s' % (str(device).upper()))
+    log.info(Back.CYAN + Fore.BLACK + 'Current device: %s' % (str(device).upper()))
 
     if 'cfg_file' in add_params:
         update_config_from_file(add_params['cfg_file'])
 
-    print(Back.WHITE + Fore.BLACK + 'Using config:')
-    print('GENERAL:')
-    pprint.pprint(cfg.GENERAL)
-    print('TEST:')
-    pprint.pprint(cfg.TEST)
-    print('RPN:')
-    pprint.pp(cfg.RPN)
+    log.info(Back.WHITE + Fore.BLACK + 'Using config:')
+    log.info('GENERAL:')
+    log.info(cfg.GENERAL)
+    log.info('TEST:')
+    log.info(cfg.TEST)
+    log.info('RPN:')
+    log.info(cfg.RPN)
 
     # TODO: add competition mode
     dataset, ds_name = dataset_factory.get_dataset(dataset, add_params, mode='test')
@@ -38,7 +40,7 @@ def test(dataset, net, class_agnostic, load_dir, session, epoch, add_params):
     output_dir = os.path.join(cfg.DATA_DIR, 'output', net, ds_name)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    print(Back.CYAN + Fore.BLACK + 'Output directory: %s' % (output_dir))
+    log.info(Back.CYAN + Fore.BLACK + 'Output directory: %s' % (output_dir))
 
     if net == 'vgg16':
         faster_rcnn = VGG16(dataset.num_classes, class_agnostic=class_agnostic)
@@ -53,10 +55,10 @@ def test(dataset, net, class_agnostic, load_dir, session, epoch, add_params):
 
     model_path = os.path.join(cfg.DATA_DIR, load_dir, net, ds_name, 
                               'frcnn_{}_{}.pth'.format(session, epoch))
-    print(Back.WHITE + Fore.BLACK + 'Loading model from %s' % (model_path))
+    log.info(Back.WHITE + Fore.BLACK + 'Loading model from %s' % (model_path))
     checkpoint = torch.load(model_path, map_location=device)
     faster_rcnn.load_state_dict(checkpoint['model'])
-    print('Done.')
+    log.info('Done.')
 
     start = time.time()
     max_per_image = 100
@@ -120,10 +122,10 @@ def test(dataset, net, class_agnostic, load_dir, session, epoch, add_params):
     with open(det_file, 'wb') as f:
         pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
 
-    print('\nEvaluating detections...')
-    dataset.evaluate_detections(all_boxes, output_dir)
+    log.info('\nEvaluating detections...')
+    dataset.evaluate_detections(all_boxes, output_dir, log)
 
     # TODO: Add txt file with result info ?
 
     end = time.time()
-    print(Back.GREEN + Fore.BLACK + 'Test time: %.4fs.' % (end - start))
+    log.info(Back.GREEN + Fore.BLACK + 'Test time: %.4fs.' % (end - start))

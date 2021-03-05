@@ -38,7 +38,7 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
     print('TRAIN:')
     pprint.pprint(cfg.TRAIN)
     print('RPN:')
-    pprint.pp(cfg.RPN)
+    pprint.pprint(cfg.RPN)
 
     dataset, ds_name = dataset_factory.get_dataset(dataset, add_params)
     loader = DataLoader(dataset, batch_size=cfg.TRAIN.BATCH_SIZE,

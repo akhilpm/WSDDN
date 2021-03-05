@@ -24,7 +24,7 @@ def get_dataset(dataset_sequence, params, mode='train', only_classes=False):
             print(Back.YELLOW + Fore.BLACK + 'WARNING! '
                   + 'Cannot find "devkit_path" in additional parameters. '
                   + 'Try to use default path (./data/VOCdevkit)...')
-            params['devkit_path'] = os.path.join(cfg.DATA_DIR, 'VOCdevkit')
+            params['devkit_path'] = os.path.join(cfg.DATA_DIR, 'VOCdevkit'+year)
         dataset = PascalVoc(image_set, year, params, only_classes)
         short_name = dataset_name + '_' + year
         print('Loaded {}PascalVoc {} {} dataset.'.format(only_cls_str, year, image_set))
