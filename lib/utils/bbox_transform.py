@@ -55,6 +55,10 @@ def bbox_overlaps_batch(anchors, gt_boxes):
     gt_boxes: (b, K, 5) ndarray of float
     overlaps: (N, K) ndarray of overlap between boxes and query_boxes
     """
+    if anchors.dim()==2 and gt_boxes.dim()==2:
+        anchors = anchors.unsqueeze(0)
+        gt_boxes = gt_boxes.unsqueeze(0)
+
     batch_size = gt_boxes.size(0)
 
 
