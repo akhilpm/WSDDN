@@ -65,14 +65,14 @@ class ImageDataset(Dataset):
         return cache_path
 
     def _load_image_data(self):
-        image_data = []
-        cache_file = os.path.join(self.cache_path, self.name + '_gt_roidb.pkl')
+        cache_file = os.path.join(self.cache_path, self.name + '_ss_gt_roidb.pkl')
         if os.path.exists(cache_file):
             with open(cache_file, 'rb') as fid:
                 image_data = pickle.load(fid)
             print('Data for {} gt roidb loaded from {}'.format(self.name, cache_file))
         else:
             image_data = [self._load_annotation(idx, id) for idx, id in enumerate(self.image_index)]
+            image_data = self._load_ss_boxes(image_data)  # load the selective search boxes to be used as pseudo GT
 
             with open(cache_file, 'wb') as fid:
                 pickle.dump(image_data, fid, pickle.HIGHEST_PROTOCOL)

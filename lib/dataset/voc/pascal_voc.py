@@ -4,6 +4,7 @@ import pickle
 import uuid
 import cv2 as cv
 import numpy as np
+import scipy.io
 import xml.etree.ElementTree as ET
 import dataset.utils as utils
 from dataset.image_dataset import ImageDataset
@@ -38,6 +39,19 @@ class PascalVoc(ImageDataset):
                         'use_salt': True,
                         'use_diff': False,
                         'matlab_eval': False}
+
+    def _load_ss_boxes(self, image_data):
+        print("Loading selective search boxes")
+        ss_filename = 'voc_'+self._year+'_'+self._image_set+'.mat'
+        ss_file_path = os.path.join(self._devkit_path, 'selective_search_data', ss_filename)
+        assert os.path.exists(ss_file_path), 'selective search data file does not exist: {}'.format(ss_file_path)
+        ss_voc2007_trainval = scipy.io.loadmat(ss_file_path)
+        ss_boxes = ss_voc2007_trainval['boxes'][0]
+        ss_boxes = [item[:2000] for item in ss_boxes] #select upto 2000 proposals from an image
+        for i, data in enumerate(image_data):
+            data['ss_boxes'] = ss_boxes[i][:, (1, 0, 3, 2)] - 1
+        return image_data
+
 
     def image_path_at(self, id):
         image_path = os.path.join(self._data_path, 'JPEGImages',
@@ -184,12 +198,6 @@ class PascalVoc(ImageDataset):
         #print('{:.3f}'.format(np.mean(aps)))
         log.info('~~~~~~~~')
         log.info('')
-        print('--------------------------------------------------------------')
-        print('Results computed with the **unofficial** Python eval code.')
-        print('Results should be very close to the official MATLAB eval code.')
-        print('Recompute with `./tools/reval.py --matlab ...` for your paper.')
-        print('-- Thanks, The Management')
-        print('--------------------------------------------------------------')
                 
     def evaluate_detections(self, all_boxes, output_dir, log):
         self._write_voc_results_file(all_boxes)

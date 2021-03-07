@@ -9,8 +9,6 @@ from torch.utils.data import DataLoader
 from torch.optim import SGD, Adam
 from torch.optim.lr_scheduler import MultiStepLR
 from dataset.collate import collate_train
-from model.vgg16 import VGG16
-from model.resnet import Resnet
 from model.wsddn import WSDDN
 from utils.net_utils import clip_gradient
 from sklearn.preprocessing import MultiLabelBinarizer
@@ -33,7 +31,7 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
     if 'cfg_file' in add_params:
         update_config_from_file(add_params['cfg_file'])
 
-    log.ino(Back.WHITE + Fore.BLACK + 'Using config:')
+    log.info(Back.WHITE + Fore.BLACK + 'Using config:')
     log.info('GENERAL:')
     log.info(cfg.GENERAL)
     log.info('TRAIN:')
@@ -50,13 +48,6 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
         os.makedirs(output_dir)
     print(Back.CYAN + Fore.BLACK + 'Output directory: %s' % (output_dir))
 
-    pretrained = True
-    model_name = '{}.pth'.format(net)
-    if 'use_pretrain' in add_params:
-        pretrained = add_params['use_pretrain']
-    if 'model_name' in add_params:
-        model_name = '{}.pth'.format(add_params['model_name'])
-    model_path = os.path.join(cfg.DATA_DIR, 'pretrained_model', model_name)
     if net == 'vgg16':
         wsddn = WSDDN(dataset.num_classes)
     elif net.startswith('resnet'):
@@ -65,7 +56,6 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
     else:
         raise ValueError(Back.RED + 'Network "{}" is not defined!'.format(net))
 
-    wsddn.init()
     wsddn.to(device)
 
     params = []
@@ -124,7 +114,8 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
             ss_boxes = data[2].to(device)
             image_labels = data[3]
             image_ids = data[4]
-            binary_targets = label_binarizer.transform(image_labels).to(device)
+            binary_targets = label_binarizer.transform(image_labels)
+            binary_targets = torch.from_numpy(binary_targets.astype(np.float32)).to(device)
 
             combined_scores = wsddn(image_data, image_info, ss_boxes)
             loss = wsddn.calculate_loss(combined_scores, binary_targets)

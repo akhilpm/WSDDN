@@ -161,16 +161,16 @@ if __name__ == "__main__":
         train(dataset=args.dataset, net=args.net, batch_size=args.batch_size,
               learning_rate=args.learning_rate, optimizer=args.optimizer,
               lr_decay_step=args.lr_decay_step, lr_decay_gamma=args.lr_decay_gamma,
-              pretrain=args.pretrain, resume=args.resume, class_agnostic=args.class_agnostic,
+              pretrain=args.pretrain, resume=args.resume,
               total_epoch=args.total_epoch, display_interval=args.display_interval,
               session=args.session, epoch=args.epoch, save_dir=args.save_dir,
-              vis_off=args.vis_off, mGPU=args.mGPU, log=log, add_params=add_params)
+              mGPU=args.mGPU, log=log, add_params=add_params)
     elif args.mode == 'test':
-        test(dataset=args.dataset, net=args.net, class_agnostic=args.class_agnostic,
+        test(dataset=args.dataset, net=args.net,
              load_dir=args.load_dir, session=args.session, epoch=args.epoch, log=log,
              add_params=add_params)
     else:
-        detect(dataset=args.dataset, net=args.net, class_agnostic=args.class_agnostic,
+        detect(dataset=args.dataset, net=args.net,
                load_dir=args.load_dir, session=args.session, epoch=args.epoch,
                vis=args.vis, image_dir=args.image_dir, add_params=add_params)
 

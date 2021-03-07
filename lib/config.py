@@ -21,6 +21,11 @@ cfg.TRAIN.DOUBLE_BIAS = True
 cfg.TRAIN.BIAS_DECAY = False
 cfg.TRAIN.WEIGHT_DECAY = 0.0005
 
+#++++++ options added by me +++++++++++
+cfg.TRAIN.MILESTONES = [25]
+cfg.TRAIN.NUM_PROPOSALS = 2000
+#++++++++++++++++++++++++++++++++++++++
+
 # If an anchor statisfied by positive and negative conditions set to negative
 cfg.TRAIN.RPN_CLOBBER_POSITIVES = False
 cfg.TRAIN.RPN_NEGATIVE_OVERLAP = 0.3

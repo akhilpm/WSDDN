@@ -16,7 +16,7 @@ def collate(image_batch, is_training):
         data = torch.from_numpy(blob['data'])
         im_info = torch.from_numpy(blob['im_info'])
         img_id = blob['img_id']
-        im_labels = torch.from_numpy(blob['image_labels'])
+        im_labels = blob['image_labels']
         if is_training:
             np.random.shuffle(blob['ss_boxes'])
             real_gt_boxes = torch.from_numpy(blob['gt_boxes'])

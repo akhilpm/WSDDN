@@ -9,13 +9,10 @@ from colorama import Back, Fore
 from config import cfg, update_config_from_file
 from torch.utils.data import DataLoader
 from dataset.collate import collate_test
-from model.vgg16 import VGG16
-from model.resnet import Resnet
 from utils.net_utils import vis_detections
 from torchvision.ops import nms
 
-def detect(dataset, net, class_agnostic, load_dir, session, epoch, vis, 
-           image_dir, add_params):
+def detect(dataset, net, load_dir, session, epoch, vis, image_dir, add_params):
     device = torch.device('cuda:0') if cfg.CUDA else torch.device('cpu')
     print(Back.CYAN + Fore.BLACK + 'Current device: %s' % (str(device).upper()))
 

@@ -24,7 +24,7 @@ class WSDDN(nn.Module):
         self.proposal_features = nn.Sequential(*list(backbone.classifier._modules.values())[:-1])
         # Fix the layers before conv3 for VGG16:
         for layer in range(10):
-            for p in self.RCNN_base[layer].parameters(): p.requires_grad = False
+            for p in self.WSDDN_base[layer].parameters(): p.requires_grad = False
 
         self.WSDDN_pool = RoIPool(cfg.GENERAL.POOLING_SIZE, 1.0/16.0)
         self.cls_stream = nn.Linear(4096, 20)
@@ -42,15 +42,16 @@ class WSDDN(nn.Module):
         pooled_feat = self.WSDDN_pool(base_feature, rois.view(-1, 5))
         pooled_feat = pooled_feat.view(pooled_feat.size(0), -1)
         proposal_features = self.proposal_features(pooled_feat)
+        proposal_features = proposal_features.view(batch_size, cfg.TRAIN.NUM_PROPOSALS, -1)
 
-        classification_scores = F.softmax(self.cls_stream(proposal_features), dim=1)
-        detection_scores = F.softmax(self.det_stream(proposal_features), dim=0)
+        classification_scores = F.softmax(self.cls_stream(proposal_features), dim=2)
+        detection_scores = F.softmax(self.det_stream(proposal_features), dim=1)
         combined_scores = classification_scores * detection_scores
         return combined_scores
 
     @staticmethod
     def calculate_loss(combined_scores, target):
-        image_level_scores = torch.sum(combined_scores, dim=0)
+        image_level_scores = torch.sum(combined_scores, dim=1).squeeze(1)
         image_level_scores = torch.clamp(image_level_scores, min=0.0, max=1.0)
         loss = F.binary_cross_entropy(image_level_scores, target, reduction="sum")
         return loss

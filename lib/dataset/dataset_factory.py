@@ -77,6 +77,14 @@ def _append_flipped_images(dataset):
         boxes[:, 2] = img['width'] - oldx1 - 1
         assert (boxes[:, 2] >= boxes[:, 0]).all()
         img['boxes'] = boxes
+        """ do the same for selective search boxes """
+        ss_boxes = img['ss_boxes'].copy()
+        oldx1 = ss_boxes[:, 0].copy()
+        oldx2 = ss_boxes[:, 2].copy()
+        ss_boxes[:, 0] = img['width'] - oldx2 - 1
+        ss_boxes[:, 2] = img['width'] - oldx1 - 1
+        assert (ss_boxes[:, 2] >= ss_boxes[:, 0]).all()
+        img['ss_boxes'] = ss_boxes
         dataset.image_data.append(img)
         dataset._image_index.append(img['id'])
 
