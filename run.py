@@ -143,7 +143,7 @@ if __name__ == "__main__":
         else:
             fh = logging.FileHandler(log_filename, mode='a')
     else:
-        log_filename = os.path.join(cfg.DATA_DIR, "logs", "wsdddn_test_sess_{}.log".format(args.session))
+        log_filename = os.path.join(cfg.DATA_DIR, "logs", "wsddn_test_sess_{}.log".format(args.session))
         if args.epoch==1:
             fh = logging.FileHandler(log_filename, mode='w')
         else:

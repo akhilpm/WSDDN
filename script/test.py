@@ -12,7 +12,7 @@ from dataset.collate import collate_test
 from model.wsddn import WSDDN
 from torchvision.ops import nms
 
-def test(dataset, net, class_agnostic, load_dir, session, epoch, log, add_params):
+def test(dataset, net, load_dir, session, epoch, log, add_params):
     log.info("============== Testing EPOCH {} =============".format(epoch))
     device = torch.device('cuda:0') if cfg.CUDA else torch.device('cpu')
     log.info(Back.CYAN + Fore.BLACK + 'Current device: %s' % (str(device).upper()))
@@ -44,7 +44,6 @@ def test(dataset, net, class_agnostic, load_dir, session, epoch, log, add_params
     else:
         raise ValueError(Back.RED + 'Network "{}" is not defined!'.format(net))
 
-    wsddn.init()
     wsddn.to(device)
 
     model_path = os.path.join(cfg.DATA_DIR, load_dir, net, ds_name, 
@@ -68,8 +67,9 @@ def test(dataset, net, class_agnostic, load_dir, session, epoch, log, add_params
 
         det_tic = time.time()
         with torch.no_grad():
-            combined_scores = wsddn(image_data, image_info, ss_boxes)
+            combined_scores = wsddn(image_data, image_info, ss_boxes).squeeze(0)
 
+        ss_boxes /= image_info[0][2].item()
         det_toc = time.time()
         detect_time = det_toc - det_tic
 
