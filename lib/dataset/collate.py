@@ -16,14 +16,17 @@ def collate(image_batch, is_training):
         data = torch.from_numpy(blob['data'])
         im_info = torch.from_numpy(blob['im_info'])
         img_id = blob['img_id']
+        im_labels = torch.from_numpy(blob['image_labels'])
         if is_training:
-            np.random.shuffle(blob['gt_boxes'])
-            gt_boxes = torch.from_numpy(blob['gt_boxes'])
-            data, im_info, gt_boxes = crop_image(data, im_info, gt_boxes, img_id)
+            np.random.shuffle(blob['ss_boxes'])
+            real_gt_boxes = torch.from_numpy(blob['gt_boxes'])
+            ss_boxes = torch.from_numpy(blob['ss_boxes'])
+            data, im_info, ss_boxes, _ = crop_image(data, im_info, ss_boxes, img_id)
         else:
-            gt_boxes = torch.Tensor([[1,1,1,1,1]])
+            ss_boxes = torch.from_numpy(blob['ss_boxes'])
+            real_gt_boxes = torch.from_numpy(blob['gt_boxes'])
         
-        batch.append((data, im_info, gt_boxes, img_id))
+        batch.append((data, im_info, ss_boxes, im_labels, img_id, real_gt_boxes))
 
     if len(image_batch) > 1:
         batch = padding_batch(batch)
@@ -55,13 +58,23 @@ def get_image_blob(img):
     gt_boxes = np.empty((len(gt_inds), 5), dtype=np.float32)
     gt_boxes[:, 0:4] = img['boxes'][gt_inds, :] * im_scale
     gt_boxes[:, 4] = img['gt_classes'][gt_inds]
+
+    given_ss_boxes = img['ss_boxes'] * im_scale
+    h, w = given_ss_boxes[:, 2] - given_ss_boxes[:, 0] + 1, given_ss_boxes[:, 3] - given_ss_boxes[:, 1] + 1
+    selected_boxes = given_ss_boxes[(h > 20) & (w > 20)]
+    ss_boxes = np.zeros((len(selected_boxes), 4), dtype=np.float32)
+    ss_boxes[:, 0:4] = selected_boxes
+    image_labels = np.unique(img['gt_classes'][gt_inds])
+
     blob['gt_boxes'] = gt_boxes
     blob['im_info'] = np.array([im.shape[0], im.shape[1], im_scale], dtype=np.float32)
     blob['img_id'] = img['id']
+    blob['ss_boxes'] = ss_boxes
+    blob['image_labels'] = image_labels
 
     return blob
 
-def crop_image(image_data, image_info, gt_boxes, img_id):
+def crop_image(image_data, image_info, gt_boxes, img_id, real_gt_boxes=None):
     width = image_data.size(1)
     height = image_data.size(0)
     ratio = float(width) / height
@@ -102,9 +115,26 @@ def crop_image(image_data, image_info, gt_boxes, img_id):
         if keep.numel() != 0:
             gt_boxes = gt_boxes[keep]
 
+        # do the same for real GT boxes
+        if real_gt_boxes is not None:
+            # shift y coordinate of gt boxes
+            real_gt_boxes[:, 1] = real_gt_boxes[:, 1] - float(y_start)
+            real_gt_boxes[:, 3] = real_gt_boxes[:, 3] - float(y_start)
+            # update gt bounding box according the trip
+            real_gt_boxes[:, 1].clamp_(0, trim_size - 1)
+            real_gt_boxes[:, 3].clamp_(0, trim_size - 1)
+            # check the bounding box:
+            not_keep = ((real_gt_boxes[:, 0] == real_gt_boxes[:, 2]) |
+                        (real_gt_boxes[:, 1] == real_gt_boxes[:, 3]))
+            keep = torch.nonzero(not_keep == 0).view(-1)
+
+            if keep.numel() != 0:
+                real_gt_boxes = real_gt_boxes[keep]
+
         print('Crop image "%s": %.0fx%.0f -> %.0fx%.0f' \
               % (img_id, width, height, image_data.shape[1], image_data.shape[0]))
-        return image_data, image_info, gt_boxes
+        return image_data, image_info, gt_boxes, real_gt_boxes
+
     elif ratio > cfg.GENERAL.MAX_IMG_RATIO:
         # image width >> image height => crop width
         min_gt_x = int(torch.min(gt_boxes[:, 0]))
@@ -142,11 +172,26 @@ def crop_image(image_data, image_info, gt_boxes, img_id):
         if keep.numel() != 0:
             gt_boxes = gt_boxes[keep]
 
+        # do the same for real GT boxes
+        if real_gt_boxes is not None:
+            # shift y coordinate of gt boxes
+            real_gt_boxes[:, 0] = real_gt_boxes[:, 0] - float(x_start)
+            real_gt_boxes[:, 2] = real_gt_boxes[:, 2] - float(x_start)
+            # update gt bounding box according the trip
+            real_gt_boxes[:, 0].clamp_(0, trim_size - 1)
+            real_gt_boxes[:, 2].clamp_(0, trim_size - 1)
+            # check the bounding box:
+            not_keep = ((real_gt_boxes[:, 0] == real_gt_boxes[:, 2]) |
+                        (real_gt_boxes[:, 1] == real_gt_boxes[:, 3]))
+            keep = torch.nonzero(not_keep == 0).view(-1)
+            if keep.numel() != 0:
+                real_gt_boxes = real_gt_boxes[keep]
+
         print('Crop image "%s": %.0fx%.0f -> %.0fx%.0f' \
               % (img_id, width, height, image_data.shape[1], image_data.shape[0]))
-        return image_data, image_info, gt_boxes
+        return image_data, image_info, gt_boxes, real_gt_boxes
     else:
-        return image_data, image_info, gt_boxes
+        return image_data, image_info, gt_boxes, real_gt_boxes
 
 def padding_batch(image_batch):
     max_img_height = int(max([img[1][0] for img in image_batch]))
@@ -160,7 +205,7 @@ def padding_batch(image_batch):
         width = img[0].size(1)
         padding_data = torch.Tensor(max_img_height, max_img_width, 3).zero_()
         padding_data[:height, :width, :] = img[0]
-        batch.append((padding_data, image_info, img[2], img[3]))
+        batch.append((padding_data, image_info, img[2], img[3], img[4], img[5])) # [data, info, gt_boxes, image_labels, image id]
 
     return batch
 
@@ -169,14 +214,21 @@ def prepare_batch(image_batch):
     img_height = int(image_batch[0][1][0])
     img_width = int(image_batch[0][1][1])
     data = torch.Tensor(num_images, 3, img_height, img_width).zero_()
-    info = torch.Tensor(num_images, 3).zero_()
-    gt_boxes = torch.Tensor(num_images, 20, image_batch[0][2].size(1)).zero_()
+    info = torch.Tensor(num_images, 5).zero_()
+    ss_boxes = torch.Tensor(num_images, cfg.TRAIN.NUM_PROPOSALS, image_batch[0][2].size(1)).zero_()
+    gt_boxes = torch.Tensor(num_images, 50, image_batch[0][5].size(1)).zero_()
     id = []
+    labels = []
     for i in range(num_images):
         data[i] = image_batch[i][0].permute(2, 0, 1).contiguous()
-        info[i] = image_batch[i][1]
-        num_boxes = min(image_batch[i][2].size(0), 20)
-        gt_boxes[i, :num_boxes, :] = image_batch[i][2][:num_boxes, :]
-        id.append(image_batch[i][3])
+        info[i, :3] = image_batch[i][1]
+        num_boxes = min(image_batch[i][2].size(0), cfg.TRAIN.NUM_PROPOSALS)
+        info[i, 3] = num_boxes
+        ss_boxes[i, :num_boxes, :] = image_batch[i][2][:num_boxes, :]
+        labels.append(image_batch[i][3])
+        id.append(image_batch[i][4])
+        num_boxes = min(image_batch[i][5].size(0), 50)
+        info[i, 4] = num_boxes
+        gt_boxes[i, :num_boxes, :] = image_batch[i][5][:num_boxes, :]
 
-    return data, info, gt_boxes, id
+    return data, info, ss_boxes, labels, id, gt_boxes

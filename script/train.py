@@ -1,22 +1,23 @@
 import os
 import time
-import pprint
 import torch
+import numpy as np
 import dataset.dataset_factory as dataset_factory
 from colorama import Back, Fore
 from config import cfg, update_config_from_file
 from torch.utils.data import DataLoader
 from torch.optim import SGD, Adam
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import MultiStepLR
 from dataset.collate import collate_train
 from model.vgg16 import VGG16
 from model.resnet import Resnet
+from model.wsddn import WSDDN
 from utils.net_utils import clip_gradient
-
+from sklearn.preprocessing import MultiLabelBinarizer
 
 def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
-          lr_decay_gamma, pretrain, resume, class_agnostic, total_epoch,
-          display_interval, session, epoch, save_dir, vis_off, mGPU, add_params):
+          lr_decay_gamma, pretrain, resume,  total_epoch,
+          display_interval, session, epoch, save_dir, mGPU, log, add_params):
     device = torch.device('cuda:0') if cfg.CUDA else torch.device('cpu')
     print(Back.CYAN + Fore.BLACK + 'Current device: %s' % (str(device).upper()))
 
@@ -32,13 +33,11 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
     if 'cfg_file' in add_params:
         update_config_from_file(add_params['cfg_file'])
 
-    print(Back.WHITE + Fore.BLACK + 'Using config:')
-    print('GENERAL:')
-    pprint.pprint(cfg.GENERAL)
-    print('TRAIN:')
-    pprint.pprint(cfg.TRAIN)
-    print('RPN:')
-    pprint.pprint(cfg.RPN)
+    log.ino(Back.WHITE + Fore.BLACK + 'Using config:')
+    log.info('GENERAL:')
+    log.info(cfg.GENERAL)
+    log.info('TRAIN:')
+    log.info(cfg.TRAIN)
 
     dataset, ds_name = dataset_factory.get_dataset(dataset, add_params)
     loader = DataLoader(dataset, batch_size=cfg.TRAIN.BATCH_SIZE,
@@ -59,20 +58,18 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
         model_name = '{}.pth'.format(add_params['model_name'])
     model_path = os.path.join(cfg.DATA_DIR, 'pretrained_model', model_name)
     if net == 'vgg16':
-        faster_rcnn = VGG16(dataset.num_classes, class_agnostic=class_agnostic,
-                            pretrained=pretrained, model_path=model_path)
+        wsddn = WSDDN(dataset.num_classes)
     elif net.startswith('resnet'):
         num_layers = net[6:]
-        faster_rcnn = Resnet(num_layers, dataset.num_classes, class_agnostic=class_agnostic,
-                             pretrained=pretrained, model_path=model_path)
+        wsddn = WSDDN(dataset.num_classes, num_layers)
     else:
         raise ValueError(Back.RED + 'Network "{}" is not defined!'.format(net))
 
-    faster_rcnn.init()
-    faster_rcnn.to(device)
+    wsddn.init()
+    wsddn.to(device)
 
     params = []
-    for key, value in dict(faster_rcnn.named_parameters()).items():
+    for key, value in dict(wsddn.named_parameters()).items():
         if value.requires_grad:
             if 'bias' in key:
                 params += [{'params': [value],
@@ -91,53 +88,53 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
         raise ValueError(Back.RED + 'Optimizer "{}" is not defined!'.format(optimizer))
 
     start_epoch = 1
+    data_size = len(dataset)
 
     if pretrain or resume:
-        model_name = 'frcnn_{}_{}.pth'.format(session, epoch)
+        model_name = 'wsddn_{}_{}.pth'.format(session, epoch)
         if 'model_name' in add_params:
             model_name = '{}.pth'.format(add_params['model_name'])
         model_path = os.path.join(output_dir, model_name)
         print(Back.WHITE + Fore.BLACK + 'Loading checkpoint %s...' % (model_path))
         checkpoint = torch.load(model_path, map_location=device)
-        faster_rcnn.load_state_dict(checkpoint['model'])
+        wsddn.load_state_dict(checkpoint['model'])
         if resume:
             start_epoch = checkpoint['epoch']
             optimizer.load_state_dict(checkpoint['optimizer'])
         print('Done.')
 
     # Decays the learning rate of each parameter group by gamma every step_size epochs.
-    lr_scheduler = StepLR(optimizer, step_size=cfg.TRAIN.LR_DECAY_STEP,
-                          gamma=cfg.TRAIN.LR_DECAY_GAMMA)
+    lr_scheduler = MultiStepLR(optimizer, milestones=cfg.TRAIN.MILESTONES, gamma=cfg.TRAIN.LR_DECAY_GAMMA)
+
+    label_binarizer = MultiLabelBinarizer()
+    label_binarizer.fit([np.arange(1, 21)])
 
     if mGPU:
-        faster_rcnn = torch.nn.DataParallel(faster_rcnn)
-
-    faster_rcnn.train()
-
-    if not vis_off:
-        from visualize.plotter import Plotter
-        plotter = Plotter()
+        wsddn = torch.nn.DataParallel(wsddn)
+    wsddn.train()
 
     for current_epoch in range(start_epoch, total_epoch + 1):
         loss_temp = 0
         start = time.time()
+        total_loss = 0.0
 
         for step, data in enumerate(loader):
             image_data = data[0].to(device)
             image_info = data[1].to(device)
-            gt_boxes = data[2].to(device)
+            ss_boxes = data[2].to(device)
+            image_labels = data[3]
+            image_ids = data[4]
+            binary_targets = label_binarizer.transform(image_labels).to(device)
 
-            *_, rpn_loss_cls, rpn_loss_bbox, \
-                RCNN_loss_cls, RCNN_loss_bbox = faster_rcnn(image_data, image_info, gt_boxes)
-
-            loss = rpn_loss_cls.mean() + rpn_loss_bbox.mean() \
-                + RCNN_loss_cls.mean() + RCNN_loss_bbox.mean()
+            combined_scores = wsddn(image_data, image_info, ss_boxes)
+            loss = wsddn.calculate_loss(combined_scores, binary_targets)
             loss_temp += loss.item()
+            total_loss += loss.item() * cfg.TRAIN.BATCH_SIZE
 
             optimizer.zero_grad()
             loss.backward()
             if net == 'vgg16':
-                clip_gradient(faster_rcnn, 10.)
+                clip_gradient(wsddn, 10.)
             optimizer.step()
 
             if step % display_interval == 0:
@@ -145,47 +142,21 @@ def train(dataset, net, batch_size, learning_rate, optimizer, lr_decay_step,
                 if step > 0:
                     loss_temp /= (display_interval + 1)
 
-                loss_rpn_cls = rpn_loss_cls.mean().item()
-                loss_rpn_bbox = rpn_loss_bbox.mean().item()
-                loss_rcnn_cls = RCNN_loss_cls.mean().item()
-                loss_rcnn_bbox = RCNN_loss_bbox.mean().item()
-
                 print(Back.WHITE + Fore.BLACK + '[session %d][epoch %2d/%2d][iter %4d/%4d]'
                       % (session, current_epoch, total_epoch, step, len(loader)))
                 print('loss: %.4f, learning rate: %.2e, time cost: %f'
                       % (loss_temp, optimizer.param_groups[0]['lr'], end-start))
-                print('rpn_cls: %.4f, rpn_box: %.4f, rcnn_cls: %.4f, rcnn_box %.4f'
-                      % (loss_rpn_cls, loss_rpn_bbox, loss_rcnn_cls, loss_rcnn_bbox))
-
-                if not vis_off:
-                    plotter_data = {'session': session,
-                                    'current_epoch': current_epoch,
-                                    'total_epoch': total_epoch,
-                                    'current_iter': step,
-                                    'total_iter': len(loader),
-                                    'lr': optimizer.param_groups[0]['lr'],
-                                    'time_cost': end-start,
-                                    'loss': [loss_temp,
-                                             loss_rpn_cls,
-                                             loss_rpn_bbox,
-                                             loss_rcnn_cls,
-                                             loss_rcnn_bbox]}
-                    plotter.send('data', plotter_data)
-
                 loss_temp = 0
                 start = time.time()
-
+        total_loss = total_loss / data_size
+        log.info("Epoch: {} Loss: {:.3f}".format(current_epoch, total_loss))
         lr_scheduler.step()
 
-        save_path = os.path.join(output_dir, 'frcnn_{}_{}.pth'.format(session, current_epoch))
+        save_path = os.path.join(output_dir, 'wsddn_{}_{}.pth'.format(session, current_epoch))
         checkpoint = {'epoch': current_epoch + 1,
-                      'model': faster_rcnn.module().state_dict() if mGPU else faster_rcnn.state_dict(),
+                      'model': wsddn.module().state_dict() if mGPU else wsddn.state_dict(),
                       'optimizer': optimizer.state_dict()}
         torch.save(checkpoint, save_path)
-        if not vis_off:
-            plotter.send('save', save_path[:-4])
         print(Back.WHITE + Fore.BLACK + 'Model saved: %s' % (save_path))
 
-    if not vis_off:
-        plotter.send('close', None)
     print(Back.GREEN + Fore.BLACK + 'Train finished.')

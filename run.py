@@ -28,15 +28,13 @@ def add_common_parser_arguments(parser):
                         help='session to load/save model')
     parser.add_argument('-e', '--epoch', default=1, type=int,
                         help='epoch to load model')
-    parser.add_argument('-cag', '--class_agnostic', action='store_true',
-                        help='whether perform class agnostic bounding box regression')
     parser.add_argument('--cuda', action='store_true',
                         help='whether use CUDA for network')
     parser.add_argument('--mGPU', action='store_true',
                         help='whether use multi GPU for network (train only)')
 
 
-parser = argparse.ArgumentParser(description='Faster R-CNN Network')
+parser = argparse.ArgumentParser(description='WSDDN Network')
 subparsers = parser.add_subparsers(dest='mode', help='main mode of network')
 formatter = argparse.ArgumentDefaultsHelpFormatter
 
@@ -139,13 +137,13 @@ if __name__ == "__main__":
     log = logging.getLogger('All_Logs')
     log.setLevel(logging.INFO)
     if args.mode == 'train':
-        log_filename = os.path.join(cfg.DATA_DIR, "logs", "wsd_train_sess_{}.log".format(args.session))
+        log_filename = os.path.join(cfg.DATA_DIR, "logs", "wsddn_train_sess_{}.log".format(args.session))
         if args.epoch == 1:
             fh = logging.FileHandler(log_filename, mode='w')
         else:
             fh = logging.FileHandler(log_filename, mode='a')
     else:
-        log_filename = os.path.join(cfg.DATA_DIR, "logs", "wsd_test_sess_{}.log".format(args.session))
+        log_filename = os.path.join(cfg.DATA_DIR, "logs", "wsdddn_test_sess_{}.log".format(args.session))
         if args.epoch==1:
             fh = logging.FileHandler(log_filename, mode='w')
         else:
@@ -166,7 +164,7 @@ if __name__ == "__main__":
               pretrain=args.pretrain, resume=args.resume, class_agnostic=args.class_agnostic,
               total_epoch=args.total_epoch, display_interval=args.display_interval,
               session=args.session, epoch=args.epoch, save_dir=args.save_dir,
-              vis_off=args.vis_off, mGPU=args.mGPU, add_params=add_params)
+              vis_off=args.vis_off, mGPU=args.mGPU, log=log, add_params=add_params)
     elif args.mode == 'test':
         test(dataset=args.dataset, net=args.net, class_agnostic=args.class_agnostic,
              load_dir=args.load_dir, session=args.session, epoch=args.epoch, log=log,

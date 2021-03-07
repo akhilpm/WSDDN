@@ -17,3 +17,11 @@ sdist/
 
 # VSCode
 .VSCode/
+
+# Pickle
+*.pkl
+
+*.idea/
+*.log
+
+.DS_Store
